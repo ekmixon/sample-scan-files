@@ -16,7 +16,8 @@ def _url(path, url):
 
 def get_security_issues(base_key=None,  url=None, componentKeys=None):
     issues=[]
-    f_filter="types=VULNERABILITY&statuses=OPEN,CONFIRMED,REOPENED&componentKeys=%s"%componentKeys
+    f_filter = f"types=VULNERABILITY&statuses=OPEN,CONFIRMED,REOPENED&componentKeys={componentKeys}"
+
     f_page=1
     while True:
         #print(_url('/api/issues/search?%s&additionalFields=_all&p=%i&ps=10' % (f_filter,f_page),  url))
@@ -25,24 +26,31 @@ def get_security_issues(base_key=None,  url=None, componentKeys=None):
         except:
             print("Querying issues failed ...")
             raise
-        for issue in r["issues"]:
-            issues.append(issue)
+        issues.extend(iter(r["issues"]))
         if r["paging"]["pageIndex"]*r["paging"]["pageSize"]>=r["paging"]["total"]:
             break
         else:
             f_page=f_page+1
-        
+
     return issues
 
 def get_rule(f_rule, base_key=None,  url=None):
-	return requests.get(_url('/api/rules/show?key=%s' % (f_rule),  url),auth=(base_key, ''))
+    return requests.get(
+        _url(f'/api/rules/show?key={f_rule}', url), auth=(base_key, '')
+    )
 
 def get_projects(base_key=None,  url=None):
 	return requests.get(_url('/api/components/search?qualifiers=TRK&ps=300',  url),auth=(base_key, ''))
 
-def  get_languagedistribution(base_key=None,  url=None,  component=None):
+def get_languagedistribution(base_key=None,  url=None,  component=None):
     # /api/measures/component?qualifiers=TRK&component=barbich_django-DefectDojo&metricKeys=ncloc_language_distribution
-    return requests.get(_url('/api/measures/component?qualifiers=TRK&component=%s&metricKeys=ncloc_language_distribution' % (component),  url),auth=(base_key, ''))
+    return requests.get(
+        _url(
+            f'/api/measures/component?qualifiers=TRK&component={component}&metricKeys=ncloc_language_distribution',
+            url,
+        ),
+        auth=(base_key, ''),
+    )
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
@@ -75,25 +83,22 @@ if __name__=="__main__":
     # retrieve issues for indicated project
     issues = get_security_issues(base_key=args.key,  url=args.host,  componentKeys=componentKeys)
     if args.debug: print("Debug: ", issues)
-    
+
     # retrieve language distribution
     if args.project and args.language:
-        csv_f=open(args.language, "wb")
-        language_file=csv.writer(csv_f,  delimiter=';', escapechar="\\")
-        language_file.writerow(['project', 'language', 'lines'])
-        for p in args.project:
-            languages = get_languagedistribution(base_key=args.key,  url=args.host,  component=p)
-            if args.debug: print("Debug: ", languages.json()['component']['measures'])
-            for m in languages.json()['component']['measures']:
-                if m['metric'] == 'ncloc_language_distribution':
-                    for l in m['value'].split(';'): language_file.writerow([p, l.split('=')[0], l.split('=')[1]])
-        csv_f.close()
-
-    
+        with open(args.language, "wb") as csv_f:
+            language_file=csv.writer(csv_f,  delimiter=';', escapechar="\\")
+            language_file.writerow(['project', 'language', 'lines'])
+            for p in args.project:
+                languages = get_languagedistribution(base_key=args.key,  url=args.host,  component=p)
+                if args.debug: print("Debug: ", languages.json()['component']['measures'])
+                for m in languages.json()['component']['measures']:
+                    if m['metric'] == 'ncloc_language_distribution':
+                        for l in m['value'].split(';'): language_file.writerow([p, l.split('=')[0], l.split('=')[1]])
     if not args.output:
         pp(issues)
         sys.exit(0)
-    
+
     csv_f=open(args.output, "wb")
     issues_file=csv.writer(csv_f,  delimiter=';', escapechar="\\")
     issues_file.writerow([
